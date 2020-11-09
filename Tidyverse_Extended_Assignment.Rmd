@@ -11,6 +11,10 @@ output:
   pdf_document: default
   vignette: default
 title: 'Collaborating and Providing peer to peer Feedback on TidyVerse Assignment'
+#since the plot in this lab are large, we want to define figure size globably in this YAML header, we can also define by chunck like below
+#fig_width: 8
+#fig_height: 12
+
 ---
 
 
@@ -23,14 +27,20 @@ options(tibble.print_min = 6, tibble.print_max = 6)
 
 ```{r }
 
-#library(tidyverse) #loading all library needed for this assignment
+library(tidyverse) #loading all library needed for this assignment
 library(knitr)
 #library(readr)
 #library(dplyr)
-library(stringr)
+#library(stringr)
 library(magrittr) # need to check this package
+library(utils)
+library(lubridate)
+
 
 ```
+Web link: https://rpubs.com/amekueko/688323
+
+Github link: https://github.com/asmozo24/TidyVerse_Extended_Assignment
 
 
 # Description
@@ -46,10 +56,13 @@ John Mazon (25/25): https://github.com/acatlin/FALL2020TIDYVERSE/blob/master/tid
 The dataset called 'Avocado Prices' was collected from kaggle.com which was updated by Justin Kiggins 02 years ago. Avocados Prices is about historical data on avocado prices and sales volume in multiple US markets. The dataset is about 2MB.  
 https://www.kaggle.com/neuromusic/avocado-prices
 
+# Research Question
+
+What is the total volume by region?
 
 
-# I am a bit lost here...maybe telling your reader what you are about to do (Description). one or two lines...
-# R uses factors to handle categorical variables, variables that have a fixed and known set of possible values. Factors are also helpful for reordering character vectors to improve display. The goal of the forcats package is to provide a suite of tools that solve common problems with factors, including changing the order of levels or the values. Some examples include:
+##### I am a bit lost here...maybe telling your reader what you are about to do (Description). one or two lines...
+##### R uses factors to handle categorical variables, variables that have a fixed and known set of possible values. Factors are also helpful for reordering character vectors to improve display. The goal of the forcats package is to provide a suite of tools that solve common problems with factors, including changing the order of levels or the values. Some examples include:
 https://rdrr.io/cran/forcats/f/README.md
 
 
@@ -57,7 +70,7 @@ https://rdrr.io/cran/forcats/f/README.md
 
 `geom_pointrange` graphs the interval for the average price of avocados for each region. I had to define a ymin and ymax as well. It is useful for drawing confidence intervals and in this case the range of prices.
 
-```{r fig.height = 10, fig.width = 5}
+```{r }
 
 # I think it is good to add some comment so that others understand better your approach or code.
 
@@ -65,20 +78,129 @@ avocados <- read.csv("https://raw.githubusercontent.com/okhaimova/DATA-607/maste
 
 # let's take a look at avocados details 
 str(avocados) # 18249 obs. of  14 variables
+view(avocados) # view can help view data in a different window rather than rerun each time you want to take a look at the data
 
 #let's check missing data
 sum(is.na(avocados))
 
 # I think maybe saving the dataset in a local drive or other storage might be a safe partice
 write.csv(avocados,'avocados')
+
 ```
 
 
 # Using dplr package (grammar)
-```{r}
+
+```{r }
+
+# let's find out how many years of data weight in the data
+avocados %>%
+  count(year)
+
+#so 4 years, from 2015 to 2018
+# now le't look at the data by year with only selected column, there is another way of doing this but probably not in dplyr 
+avocados2015 <- avocados %>% 
+  select(Date, AveragePrice, Total.Volume, type, year, region) %>% 
+  filter(year == 2015) 
+view(avocados2015)
+
+#let's see how many region are present in the new data
+avocados2015 %>%
+  count(region)
+
+#there are 04 summary data, West, TotalUS, Northeast, Midsouth, SouthCentral, Southeast   let's remove them, this can be done with base-r feature 
+avocados2015a <- avocados2015 %>%
+  filter(!grepl("West", region) & !grepl("TotalUS", region) & !grepl("Northeast", region) & !grepl("Midsouth", region) & !grepl("SouthCentral", region) & !grepl("Southeast", region) )
+
+# remove row value using slice () function
+#avocados2015a <- avocados2015 %>% 
+#  slice(-c(West, TotalUS, Northeast, Midsouth, SouthCentral, Southeast))
+
+#let's take a look at the result 
+avocados2015a %>%
+  count(region)
+
+# Now , let's rerange date by month, actual date format is yy-mm-dd
+# let's see the data structure
+str(avocados2015a)
+
+#converting date character as Date but not working
+avocados2015b <- avocados2015a %>%
+  mutate(Date = as.Date(Date, format = "%y-%m-%d")) %>%
+  arrange(Date)
+
+#another way of converting date and time "%m/%d/%Y %H:%M:%S"
+#strptime(avocados2015a$Date, "%m-%d-%Y")
+
+```
+
+# Using Stringr
+
+date formating seems not to be working in dplyr grammar, another way will be to use stringr grammar, change the appearance of date from yy-mm-dd (2015-12-27) to 2015-December-27, then we can string search word by "December" , "November" etc..
+We can create a plot averaprice or total volume by new variable = month or create a facets plot by months ( facet_wrap())
+
+```{r }
+
+#changing format date from yy-mm-dd (2015-12-27) to 2015-December-27 but not working ...
+#avocados2015a %>%
+# mutate (Date = ISOdate(Date, format = '%A, %B %d, %Y'))
+# format(Date,'%A, %B %d, %Y')
+
+# another way to detect matching pattern
+#avocados2015a %>% 
+#  str_detect(Date, "December")
 
 
 ```
+
+
+# Plots
+
+```{r, fig.height = 12, fig.width = 16}
+
+#let's do some plot, plot total volume by region, we can do this two ways, #1 is to sum totalvolume by region, #2 is to do barplot or histogram
+#option 2, I will use barplot using ggplots
+# there is bit of a problem with size, with 47 region, the total volume scale on the Y axis need to be adjusted 
+# reorder seems not to be working great, ex: chicago comes before PhoenixTuscon
+avocados2015a %>%
+  ggplot(aes(x=forcats::fct_reorder(region,Total.Volume ), y = Total.Volume )) +
+  geom_col() + 
+  coord_flip() + 
+  labs(x="Region", y="Total Volume of Avocados", title = "Total Volume of Avocados by U.S. Region")
+
+# now let's add the two type ..conventional and organic
+avocados2015a %>%
+  ggplot(aes(x=forcats::fct_reorder(region,Total.Volume ), y = Total.Volume , fill = type)) +
+  geom_col() + 
+  coord_flip() + 
+  labs(x="Region", y="Total Volume of Avocados", title = "Total Volume of Avocados by U.S. Regions")
+
+```
+
+# Plot averageprice by date but this not what I really want
+
+```{r }
+# Not really what I want
+avocados %>%
+ggplot(aes(x = Date, y = AveragePrice)) +
+      geom_point(color = "blue") +
+      labs(title = "Average Price of Avocados by Year ",
+           #subtitle = "average price trend ",
+           y = "Average Price",
+           x = "year") + theme_bw(base_size = 15)
+
+# let's plot by facet
+avocados %>%
+ggplot(aes(x = Date, y = AveragePrice)) +
+      geom_point(color = "blue") +
+      facet_wrap( ~ year)
+      labs(title = "Average Price of Avocados by Year ",
+           #subtitle = "average price trend ",
+           y = "Average Price",
+           x = "year") + theme_bw(base_size = 15)
+
+```
+
 
 ```{r}
 # Example here, I think you want to redefine the data type to date
@@ -107,7 +229,9 @@ avocados %>%
 
 ```
 
+# Conclusion
 
+On this assignment peer review , I added dplyr grammar and stringr. stringr is not good as my code does not work. I think something about the data needs a closer look. I added a look of comment to let you know what I was doing. I hope you will be able to tell the difference. Overall, your dataset is rich and offers a lot of practice for someone who wants to explore more R-package. I actually I think this can be a good project if adding statiscal analysis. 
 
 
 
